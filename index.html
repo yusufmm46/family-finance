@@ -1462,11 +1462,18 @@ function deleteFixedItem(idx) {
 
 function getFixedTotals() {
   // Returns {catKey: total} for all fixed items
+  // SKIP any category that already has bill rows entered — those already include fixed amounts
   const items = loadFixedItems();
   const totals = {};
   items.forEach(item => {
     const v = parseFloat(item.amount)||0;
-    if (v > 0) totals[item.catKey] = (totals[item.catKey]||0) + v;
+    if (v > 0) {
+      // Only add fixed item if no bills have been entered for this category yet
+      const hasBills = (billsData[item.catKey]||[]).some(b => parseFloat(b.amt) > 0);
+      if (!hasBills) {
+        totals[item.catKey] = (totals[item.catKey]||0) + v;
+      }
+    }
   });
   return totals;
 }
