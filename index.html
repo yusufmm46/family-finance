@@ -630,6 +630,32 @@ textarea{resize:vertical;min-height:80px;}
     <button class="btn" style="margin-top:10px;font-size:11px;" onclick="addFixedItemRow()">+ Add Fixed Item</button>
   </div>
 
+  <!-- Income Section -->
+  <div class="panel mt" style="border-color:var(--green);border-left-width:3px;">
+    <div class="panel-hd" style="margin-bottom:16px;">
+      <div class="panel-title" style="font-size:17px;">💴 Monthly <em>Income</em></div>
+      <div class="panel-sub">Enter this month's actual take-home salaries & other income</div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group">
+        <label>Yusuf Salary (¥)</label>
+        <input type="number" id="inc-yusuf" placeholder="e.g. 465000" oninput="updateIncomePreview()">
+      </div>
+      <div class="form-group">
+        <label>Anjum Salary (¥)</label>
+        <input type="number" id="inc-anjum" placeholder="e.g. 340000" oninput="updateIncomePreview()">
+      </div>
+    </div>
+    <div id="extra-income-list" style="margin-top:12px;"></div>
+    <button class="btn" style="margin-top:10px;font-size:11px;" onclick="addExtraIncomeRow()">+ Add Other Income</button>
+    <div id="income-total-row" style="margin-top:14px;padding:12px 14px;background:var(--s2);border:1px solid var(--border);display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--muted);">Total Income</span>
+        <span id="income-total-val" style="font-family:'Playfair Display',serif;font-size:20px;color:var(--green);">¥0</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Notes -->
   <div class="form-group mt" style="max-width:600px;">
     <label>Month Notes (optional)</label>
@@ -850,7 +876,13 @@ const HISTORICAL_EMIS = [
   {id:'emi14',name:'Anjum ke Abba',rate:0,balance:0,emi:20000,paydate:'1st',original:0,note:'Family commitment'},
 ];
 
-const SALARY = 805000;
+const DEFAULT_SALARY = 805000; // fallback for historical months with no income data
+
+function getMonthIncome(m) {
+  // Use actual recorded income if available, else fall back to default
+  if (m && m.income && m.income.total > 0) return m.income.total;
+  return DEFAULT_SALARY;
+}
 
 // ═══════════════════════════════════
 // STATE
@@ -1078,7 +1110,7 @@ function renderDashboard() {
     <div class="card" style="--accent:var(--blue)">
       <div class="card-label">Period Average</div>
       <div class="card-val">${fmt(avg).replace('¥','')}<span class="unit"> ¥</span></div>
-      <div class="card-note ${avg/SALARY>0.5?'up':'ok'}">${(avg/SALARY*100).toFixed(0)}% of salary</div>
+      <div class="card-note ${avg/DEFAULT_SALARY>0.5?'up':'ok'}">${(avg/DEFAULT_SALARY*100).toFixed(0)}% of salary</div>
     </div>
     <div class="card" style="--accent:var(--red)">
       <div class="card-label">Highest Month</div>
@@ -1103,12 +1135,13 @@ function renderDashboard() {
       labels,
       datasets:[
         {label:'Total Spend',data:totals,
-          backgroundColor:totals.map(t=>{
-            const r=t/SALARY;
-            return r>0.55?'rgba(240,80,96,0.8)':r>0.4?'rgba(240,128,64,0.75)':'rgba(77,158,255,0.65)';
+          backgroundColor:totals.map((t,i)=>{
+            const inc=getMonthIncome(months[i]);
+            const r=t/inc;
+            return r>0.75?'rgba(240,80,96,0.8)':r>0.55?'rgba(240,128,64,0.75)':'rgba(77,158,255,0.65)';
           }),borderWidth:0},
-        {label:'Salary',data:months.map(()=>SALARY),type:'line',
-          borderColor:'rgba(232,184,75,0.5)',borderDash:[6,4],borderWidth:1.5,
+        {label:'Income',data:months.map(m=>getMonthIncome(m)),type:'line',
+          borderColor:'rgba(78,203,142,0.6)',borderDash:[6,4],borderWidth:1.5,
           pointRadius:0,fill:false}
       ]
     },
@@ -1275,6 +1308,10 @@ function loadMonthIntoForm(id) {
     }
   });
 
+  // Load income if saved
+  if (m.income) loadIncomeIntoForm(m.income);
+  else loadIncomeIntoForm(null);
+
   // Set notes
   document.getElementById('inp-notes').value = m.notes || '';
 
@@ -1434,10 +1471,62 @@ function getFixedTotals() {
   return totals;
 }
 
+// ── Income ──
+let extraIncomeRows = []; // [{desc, amt}]
+
+function updateIncomePreview() {
+  const yusuf = parseFloat(document.getElementById('inc-yusuf')?.value)||0;
+  const anjum = parseFloat(document.getElementById('inc-anjum')?.value)||0;
+  const extra = extraIncomeRows.reduce((s,r)=>s+(parseFloat(r.amt)||0),0);
+  const total = yusuf + anjum + extra;
+  const row = document.getElementById('income-total-row');
+  const val = document.getElementById('income-total-val');
+  if (row) row.style.display = total > 0 ? 'block' : 'none';
+  if (val) val.textContent = fmt(total);
+  updatePreview(); // refresh expense % too
+}
+
+function addExtraIncomeRow() {
+  extraIncomeRows.push({desc:'', amt:''});
+  renderExtraIncomeRows();
+}
+
+function renderExtraIncomeRows() {
+  const list = document.getElementById('extra-income-list');
+  if (!list) return;
+  list.innerHTML = extraIncomeRows.map((r,i)=>`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <input class="fixed-label-inp" type="text" placeholder="Description e.g. Bonus, Freelance"
+        value="${r.desc}" oninput="extraIncomeRows[${i}].desc=this.value">
+      <input class="fixed-amt-inp" type="number" placeholder="¥ Amount"
+        value="${r.amt}" oninput="extraIncomeRows[${i}].amt=this.value;updateIncomePreview()">
+      <button class="bill-del" onclick="extraIncomeRows.splice(${i},1);renderExtraIncomeRows();updateIncomePreview()">✕</button>
+    </div>`).join('');
+}
+
+function getIncomeData() {
+  const yusuf = parseFloat(document.getElementById('inc-yusuf')?.value)||0;
+  const anjum = parseFloat(document.getElementById('inc-anjum')?.value)||0;
+  const extras = extraIncomeRows.filter(r=>parseFloat(r.amt)>0).map(r=>({desc:r.desc,amt:parseFloat(r.amt)||0}));
+  const total = yusuf + anjum + extras.reduce((s,r)=>s+r.amt,0);
+  return {yusuf, anjum, extras, total};
+}
+
+function loadIncomeIntoForm(income) {
+  if (!income) return;
+  if (document.getElementById('inc-yusuf')) document.getElementById('inc-yusuf').value = income.yusuf||'';
+  if (document.getElementById('inc-anjum')) document.getElementById('inc-anjum').value = income.anjum||'';
+  extraIncomeRows = income.extras || [];
+  renderExtraIncomeRows();
+  updateIncomePreview();
+}
+
 function updatePreview() {
   const rows = document.getElementById('preview-rows');
   if (!rows) return;
   const fixedTotals = getFixedTotals();
+  const income = getIncomeData();
+  const effectiveSalary = income.total > 0 ? income.total : DEFAULT_SALARY;
 
   let total = 0;
   let html = '';
@@ -1464,15 +1553,35 @@ function updatePreview() {
   });
 
   if (total > 0) {
-    const pct = (total/SALARY*100).toFixed(0);
-    const pctColor = total/SALARY>0.55?'var(--red)':total/SALARY>0.4?'var(--orange)':'var(--green)';
-    html += `<div class="preview-row">
-      <span style="font-weight:500">Total</span>
-      <span style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:11px;color:${pctColor}">${pct}% of salary</span>
-        <span style="font-family:Playfair Display,serif;font-size:18px">${fmt(total)}</span>
-      </span>
+    const pct = (total/effectiveSalary*100).toFixed(1);
+    const pctColor = total/effectiveSalary>0.75?'var(--red)':total/effectiveSalary>0.55?'var(--orange)':'var(--green)';
+    const savings = effectiveSalary - total;
+    html += `<div class="preview-row" style="border-top:2px solid var(--border2);margin-top:4px;padding-top:10px;">
+      <span style="font-weight:500">Total Expenses</span>
+      <span style="font-family:Playfair Display,serif;font-size:18px;color:var(--gold)">${fmt(total)}</span>
     </div>`;
+    if (income.total > 0) {
+      html += `
+      <div class="preview-row">
+        <span style="color:var(--muted2)">Total Income</span>
+        <span style="color:var(--green)">${fmt(income.total)}</span>
+      </div>
+      <div class="preview-row">
+        <span style="color:var(--muted2)">Expense %</span>
+        <span style="color:${pctColor};font-weight:500">${pct}% of income</span>
+      </div>
+      <div class="preview-row" style="border-bottom:none;">
+        <span style="color:var(--muted2)">Savings</span>
+        <span style="color:${savings>=0?'var(--green)':'var(--red)'};font-weight:500">
+          ${savings>=0?'':'−'}${fmt(Math.abs(savings))}
+        </span>
+      </div>`;
+    } else {
+      html += `<div class="preview-row" style="border-bottom:none;">
+        <span style="color:var(--muted);font-size:11px;">Add income above to see exact savings</span>
+        <span style="color:${pctColor}">${pct}% of default</span>
+      </div>`;
+    }
     rows.innerHTML = html;
   } else {
     rows.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">Start adding bills above to see your summary here.</div>';
@@ -1484,13 +1593,15 @@ function saveMonth() {
   const year = parseInt(document.getElementById('inp-year').value);
   const id = `${month}-${year}`;
   const fixedTotals = getFixedTotals();
+  const income = getIncomeData();
 
   const entry = {id, month, year, notes: document.getElementById('inp-notes').value, billDetails: {}};
+  if (income.total > 0) entry.income = income;
+
   CATS.forEach(c => {
     const billTotal = getCatTotal(c.key);
     const fixedTotal = fixedTotals[c.key]||0;
     entry[c.key] = billTotal + fixedTotal;
-    // Store individual bills for detail view
     if ((billsData[c.key]||[]).length > 0) {
       entry.billDetails[c.key] = billsData[c.key].filter(b=>parseFloat(b.amt)>0);
     }
@@ -1517,6 +1628,12 @@ function saveMonth() {
 function clearAddForm() {
   CATS.forEach(c => { billsData[c.key] = []; });
   document.getElementById('inp-notes').value='';
+  if (document.getElementById('inc-yusuf')) document.getElementById('inc-yusuf').value='';
+  if (document.getElementById('inc-anjum')) document.getElementById('inc-anjum').value='';
+  extraIncomeRows = [];
+  renderExtraIncomeRows();
+  const row = document.getElementById('income-total-row');
+  if (row) row.style.display='none';
   renderCatSections();
   updatePreview();
 }
@@ -1533,7 +1650,7 @@ function renderRecentList() {
       ${m.notes?`<span class="entry-label" style="font-size:10px;color:var(--muted);flex:1">${m.notes}</span>`:'<span style="flex:1"></span>'}
       <span style="font-size:10px;color:var(--muted2);">${hasBillDetails?'📋 detailed':''}</span>
       <span class="entry-val">${fmt(t)}</span>
-      <span style="font-size:10px;color:${t/SALARY>0.55?'var(--red)':t/SALARY>0.4?'var(--orange)':'var(--green)'}">${(t/SALARY*100).toFixed(0)}%</span>
+      <span style="font-size:10px;color:${getMonthIncome(m)>0?(t/getMonthIncome(m)>0.75?"var(--red)":t/getMonthIncome(m)>0.55?"var(--orange)":"var(--green)"):"var(--blue)"}">${(t/getMonthIncome(m)*100).toFixed(0)}%</span>
       <button class="btn" style="padding:4px 10px;font-size:10px;" onclick="loadMonthIntoForm('${m.id}');document.getElementById('inp-month').value='${m.month}';document.getElementById('inp-year').value='${m.year}';checkMonthExists();">✏ Edit</button>
       <button class="entry-remove" onclick="deleteMonth('${m.id}')">✕</button>
     </div>`;
@@ -1575,8 +1692,10 @@ function renderHistory() {
 
   grid.innerHTML = [...months].reverse().map(m=>{
     const t = monthTotal(m);
-    const pct = t/SALARY*100;
-    const pctClass = pct>55?'pct-high':pct>40?'pct-warn':'pct-ok';
+    const inc = getMonthIncome(m);
+    const pct = t/inc*100;
+    const pctClass = pct>75?'pct-high':pct>55?'pct-warn':'pct-ok';
+    const incLabel = m.income&&m.income.total>0 ? fmt(m.income.total)+' income' : 'est. salary';
     const catBars = CATS.filter(c=>c.key!=='rent').map(c=>{
       const v = m[c.key]||0;
       const w = maxT>0?Math.round(v/maxT*100):0;
@@ -1587,7 +1706,7 @@ function renderHistory() {
     }).join('');
 
     return `<div class="month-card" onclick="openModal('${m.id}')">
-      <div class="mc-total-pct ${pctClass}">${pct.toFixed(0)}% salary</div>
+      <div class="mc-total-pct ${pctClass}">${pct.toFixed(0)}% of ${incLabel}</div>
       <div class="mc-year">${m.year}</div>
       <div class="mc-month">${m.month}</div>
       <div class="mc-total">${fmt(t)}</div>
@@ -1603,8 +1722,10 @@ function openModal(id) {
   if (!m) return;
   const t = monthTotal(m);
 
+  const inc = getMonthIncome(m);
+  const incNote = m.income&&m.income.total>0 ? ` · Income: ${fmt(m.income.total)}` : '';
   document.getElementById('modal-title').innerHTML = `<em>${m.month}</em> ${m.year}`;
-  document.getElementById('modal-sub').textContent = `Total: ${fmt(t)} · ${(t/SALARY*100).toFixed(1)}% of salary`;
+  document.getElementById('modal-sub').textContent = `Expenses: ${fmt(t)} · ${(t/inc*100).toFixed(1)}% of income${incNote}`;
   document.getElementById('modal-note').textContent = m.notes ? `📝 ${m.notes}` : '';
 
   // Show category totals + bill details if available
