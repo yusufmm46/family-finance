@@ -36,6 +36,45 @@
   --c-rent: #60b8f0;
   --c-petrol: #70d060;
 }
+body.light-mode {
+  --bg: #f4f5f8;
+  --s1: #ffffff;
+  --s2: #eef0f5;
+  --s3: #e4e7ef;
+  --border: #d0d5e8;
+  --border2: #b8c0d8;
+  --text: #1a2035;
+  --muted: #7a88a8;
+  --muted2: #4a5878;
+  --gold: #b8860b;
+  --gold2: #d4a017;
+  --blue: #1a6fd4;
+  --green: #1a9460;
+  --red: #c0303e;
+  --orange: #c05818;
+}
+body.light-mode .nav{background:rgba(244,245,248,0.95);}
+body.light-mode body::after{display:none;}
+
+/* Theme toggle */
+.theme-toggle{
+  display:flex;align-items:center;gap:6px;
+  background:var(--s2);border:1px solid var(--border2);
+  padding:6px 12px;cursor:pointer;font-size:11px;
+  color:var(--muted2);letter-spacing:0.05em;transition:all 0.2s;
+}
+.theme-toggle:hover{border-color:var(--gold);color:var(--gold);}
+.toggle-track{
+  width:32px;height:18px;background:var(--border2);
+  border-radius:9px;position:relative;transition:background 0.2s;flex-shrink:0;
+}
+.toggle-thumb{
+  width:14px;height:14px;background:var(--muted2);
+  border-radius:50%;position:absolute;top:2px;left:2px;
+  transition:all 0.2s;
+}
+body.light-mode .toggle-track{background:var(--gold);}
+body.light-mode .toggle-thumb{left:16px;background:#fff;}
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 body{
@@ -278,7 +317,7 @@ textarea{resize:vertical;min-height:80px;}
 .modal-title{font-family:'Playfair Display',serif;font-size:26px;margin-bottom:6px;}
 .modal-title em{color:var(--gold);font-style:italic;}
 .modal-sub{font-size:11px;color:var(--muted);margin-bottom:24px;}
-.modal-cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
+.modal-cat-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:20px;}
 .modal-cat{
   display:flex;justify-content:space-between;
   padding:10px 14px;background:var(--s2);border:1px solid var(--border);font-size:12px;
@@ -471,6 +510,10 @@ textarea{resize:vertical;min-height:80px;}
   <div class="nav-actions">
     <span id="sync-status" style="font-size:10px;color:var(--muted);letter-spacing:0.05em;padding:0 8px;">⬤ Loading…</span>
     <button class="btn" onclick="showUrlSetup()" title="Connect Google Sheets">⚙ Sheets</button>
+    <div class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+      <span id="theme-label">🌙 Dark</span>
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+    </div>
     <button class="btn" onclick="exportData()">Export JSON</button>
   </div>
 </nav>
@@ -551,24 +594,27 @@ textarea{resize:vertical;min-height:80px;}
     <div class="add-sub">Enter bills one by one per category — totals calculated automatically</div>
   </div>
 
-  <!-- Month / Year selector -->
-  <div class="form-grid" style="max-width:480px;">
-    <div class="form-group">
-      <label>Month</label>
-      <select id="inp-month">
-        <option>Jan</option><option>Feb</option><option>Mar</option>
-        <option>Apr</option><option>May</option><option>Jun</option>
-        <option>Jul</option><option>Aug</option><option>Sep</option>
-        <option>Oct</option><option>Nov</option><option>Dec</option>
-      </select>
+  <!-- Month / Year selector + Load previous -->
+  <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;max-width:700px;">
+    <div class="form-grid" style="flex:1;min-width:280px;">
+      <div class="form-group">
+        <label>Month</label>
+        <select id="inp-month" onchange="checkMonthExists()">
+          <option>Jan</option><option>Feb</option><option>Mar</option>
+          <option>Apr</option><option>May</option><option>Jun</option>
+          <option>Jul</option><option>Aug</option><option>Sep</option>
+          <option>Oct</option><option>Nov</option><option>Dec</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Year</label>
+        <select id="inp-year" onchange="checkMonthExists()">
+          <option>2024</option><option>2025</option>
+          <option selected>2026</option><option>2027</option>
+        </select>
+      </div>
     </div>
-    <div class="form-group">
-      <label>Year</label>
-      <select id="inp-year">
-        <option>2024</option><option>2025</option>
-        <option selected>2026</option><option>2027</option>
-      </select>
-    </div>
+    <div id="load-month-hint" style="padding-bottom:4px;"></div>
   </div>
 
   <!-- Category accordion sections -->
@@ -596,9 +642,10 @@ textarea{resize:vertical;min-height:80px;}
     <div id="preview-rows"></div>
   </div>
 
-  <div style="display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;">
+  <div style="display:flex;gap:12px;margin-top:24px;flex-wrap:wrap;align-items:center;">
     <button class="btn btn-primary" onclick="saveMonth()">💾 Save Month</button>
     <button class="btn" onclick="clearAddForm()">Clear All</button>
+    <span id="save-status-hint" style="font-size:11px;color:var(--muted);"></span>
   </div>
 
   <div class="panel mt2">
@@ -1185,6 +1232,63 @@ function renderAddPage() {
   renderFixedItems();
   renderRecentList();
   updatePreview();
+  checkMonthExists();
+}
+
+function checkMonthExists() {
+  const month = document.getElementById('inp-month')?.value;
+  const year = document.getElementById('inp-year')?.value;
+  if (!month || !year) return;
+  const id = `${month}-${year}`;
+  const existing = state.months.find(m => m.id === id);
+  const hint = document.getElementById('load-month-hint');
+  const saveHint = document.getElementById('save-status-hint');
+  if (existing) {
+    const t = monthTotal(existing);
+    hint.innerHTML = `
+      <div style="background:rgba(232,184,75,0.1);border:1px solid var(--gold);padding:10px 14px;font-size:12px;">
+        <div style="color:var(--gold);margin-bottom:6px;">📂 ${month} ${year} already saved — ${fmt(t)}</div>
+        <button class="btn btn-primary" style="font-size:10px;padding:5px 12px;" onclick="loadMonthIntoForm('${id}')">
+          ✏ Load & Edit this month
+        </button>
+      </div>`;
+    if (saveHint) saveHint.textContent = 'Saving will overwrite this month\'s data';
+  } else {
+    hint.innerHTML = '';
+    if (saveHint) saveHint.textContent = '';
+  }
+}
+
+function loadMonthIntoForm(id) {
+  const m = state.months.find(x => x.id === id);
+  if (!m) return;
+
+  // Load bill details back into billsData
+  CATS.forEach(c => {
+    if (m.billDetails && m.billDetails[c.key] && m.billDetails[c.key].length > 0) {
+      billsData[c.key] = m.billDetails[c.key].map(b => ({desc: b.desc||'', amt: String(b.amt||'')}));
+    } else if (m[c.key] > 0) {
+      // No bill details saved — show total as single entry
+      billsData[c.key] = [{desc: c.label + ' total', amt: String(m[c.key])}];
+    } else {
+      billsData[c.key] = [];
+    }
+  });
+
+  // Set notes
+  document.getElementById('inp-notes').value = m.notes || '';
+
+  // Re-render sections
+  renderCatSections();
+  updatePreview();
+
+  // Scroll to top of form
+  document.getElementById('cat-sections').scrollIntoView({behavior:'smooth'});
+  showToast(`${m.month} ${m.year} loaded — make changes and Save Month to update`);
+
+  // Update hint
+  const hint = document.getElementById('load-month-hint');
+  if (hint) hint.innerHTML = `<div style="font-size:11px;color:var(--green);padding:8px 0;">✓ Loaded ${m.month} ${m.year} — edit and save to update</div>`;
 }
 
 function renderCatSections() {
@@ -1419,15 +1523,18 @@ function clearAddForm() {
 
 function renderRecentList() {
   const list = document.getElementById('recent-list');
-  const recent = [...state.months].reverse().slice(0,5);
+  const recent = [...state.months].reverse().slice(0,8);
   if (!recent.length) { list.innerHTML='<div style="color:var(--muted);font-size:12px;">No months added yet.</div>'; return; }
   list.innerHTML = recent.map(m=>{
     const t = monthTotal(m);
+    const hasBillDetails = m.billDetails && Object.values(m.billDetails).some(arr=>arr&&arr.length>0);
     return `<div class="entry-row">
-      <span class="entry-label" style="font-family:Playfair Display,serif;font-size:16px">${m.month} ${m.year}</span>
-      ${m.notes?`<span class="entry-label" style="font-size:10px;color:var(--muted)">${m.notes}</span>`:''}
+      <span class="entry-label" style="font-family:Playfair Display,serif;font-size:16px;min-width:70px">${m.month} ${m.year}</span>
+      ${m.notes?`<span class="entry-label" style="font-size:10px;color:var(--muted);flex:1">${m.notes}</span>`:'<span style="flex:1"></span>'}
+      <span style="font-size:10px;color:var(--muted2);">${hasBillDetails?'📋 detailed':''}</span>
       <span class="entry-val">${fmt(t)}</span>
-      <span style="font-size:10px;color:${t/SALARY>0.55?'var(--red)':t/SALARY>0.4?'var(--orange)':'var(--green)'}">${(t/SALARY*100).toFixed(0)}% salary</span>
+      <span style="font-size:10px;color:${t/SALARY>0.55?'var(--red)':t/SALARY>0.4?'var(--orange)':'var(--green)'}">${(t/SALARY*100).toFixed(0)}%</span>
+      <button class="btn" style="padding:4px 10px;font-size:10px;" onclick="loadMonthIntoForm('${m.id}');document.getElementById('inp-month').value='${m.month}';document.getElementById('inp-year').value='${m.year}';checkMonthExists();">✏ Edit</button>
       <button class="entry-remove" onclick="deleteMonth('${m.id}')">✕</button>
     </div>`;
   }).join('');
@@ -1498,17 +1605,56 @@ function openModal(id) {
 
   document.getElementById('modal-title').innerHTML = `<em>${m.month}</em> ${m.year}`;
   document.getElementById('modal-sub').textContent = `Total: ${fmt(t)} · ${(t/SALARY*100).toFixed(1)}% of salary`;
-  document.getElementById('modal-note').textContent = m.notes ? `Note: ${m.notes}` : '';
+  document.getElementById('modal-note').textContent = m.notes ? `📝 ${m.notes}` : '';
 
-  document.getElementById('modal-cats').innerHTML = CATS.map(c=>`
-    <div class="modal-cat">
-      <div class="modal-cat-name"><span class="leg-dot" style="background:${c.color}"></span>${c.label}</div>
-      <div class="modal-cat-val">${fmt(m[c.key]||0)}</div>
-    </div>
-  `).join('');
+  // Show category totals + bill details if available
+  document.getElementById('modal-cats').innerHTML = CATS.map(c=>{
+    const catTotal = m[c.key]||0;
+    if (catTotal === 0) return '';
+    const bills = m.billDetails && m.billDetails[c.key];
+    const billRows = bills && bills.length > 0
+      ? `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+          ${bills.map(b=>`
+            <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;">
+              <span style="color:var(--muted)">${b.desc||'—'}</span>
+              <span style="color:var(--muted2)">${fmt(parseFloat(b.amt)||0)}</span>
+            </div>`).join('')}
+        </div>`
+      : '';
+    return `
+    <div class="modal-cat" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="modal-cat-name"><span class="leg-dot" style="background:${c.color}"></span>${c.label}</div>
+        <div class="modal-cat-val">${fmt(catTotal)}</div>
+      </div>
+      ${billRows}
+    </div>`;
+  }).join('');
 
   document.getElementById('modal-total').innerHTML = `<span>Total</span><span>${fmt(t)}</span>`;
   document.getElementById('modal-delete-btn').onclick = ()=>{ deleteMonth(id); closeModal(); renderHistory(); };
+
+  // Add Edit button to modal
+  const actions = document.querySelector('.modal-actions');
+  const existingEdit = document.getElementById('modal-edit-btn');
+  if (!existingEdit) {
+    const editBtn = document.createElement('button');
+    editBtn.id = 'modal-edit-btn';
+    editBtn.className = 'btn';
+    editBtn.textContent = '✏ Edit Month';
+    editBtn.onclick = () => {
+      closeModal();
+      goTo('add');
+      setTimeout(() => {
+        document.getElementById('inp-month').value = m.month;
+        document.getElementById('inp-year').value = m.year;
+        loadMonthIntoForm(id);
+        checkMonthExists();
+      }, 100);
+    };
+    actions.insertBefore(editBtn, actions.firstChild);
+  }
+
   document.getElementById('modal-overlay').classList.add('open');
 }
 
@@ -1690,8 +1836,24 @@ function deleteEmi(id) {
 }
 
 // ═══════════════════════════════════
-// UTILS
+// THEME TOGGLE
 // ═══════════════════════════════════
+function toggleTheme() {
+  const isLight = document.body.classList.toggle('light-mode');
+  localStorage.setItem('yusuf_theme', isLight ? 'light' : 'dark');
+  document.getElementById('theme-label').textContent = isLight ? '☀ Light' : '🌙 Dark';
+  // Redraw charts with updated colors
+  renderDashboard();
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('yusuf_theme');
+  if (saved === 'light') {
+    document.body.classList.add('light-mode');
+    const lbl = document.getElementById('theme-label');
+    if (lbl) lbl.textContent = '☀ Light';
+  }
+}
 function showToast(msg, isError=false) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -1716,6 +1878,7 @@ function exportData() {
 const deleted = JSON.parse(localStorage.getItem('yusuf_deleted')||'[]');
 state.months = state.months.filter(m=>!deleted.includes(m.id));
 
+initTheme();
 renderDashboard();
 
 // Try to sync from cloud after initial render
